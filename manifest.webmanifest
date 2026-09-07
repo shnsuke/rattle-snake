@@ -1,0 +1,14 @@
+{
+  "name": "Rattlesnake VO2max Trainer",
+  "short_name": "Rattlesnake",
+  "description": "オフライン対応 VO2max インターバルトレーニングアプリ",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#12181f",
+  "theme_color": "#12181f",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
