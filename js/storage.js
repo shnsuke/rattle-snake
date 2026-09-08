@@ -4,7 +4,6 @@
  */
 (function (global) {
   const KEY_FTP = 'rs_ftp';
-  const KEY_LAST_LEVEL = 'rs_last_level';
   const KEY_RIDES = 'rs_rides';
   const DEFAULT_FTP = 312;
 
@@ -37,17 +36,8 @@
     localStorage.removeItem(KEY_RIDES);
   }
 
-  function getLastLevel() {
-    const v = parseInt(localStorage.getItem(KEY_LAST_LEVEL), 10);
-    return Number.isFinite(v) ? v : 3;
-  }
-  function setLastLevel(level) {
-    localStorage.setItem(KEY_LAST_LEVEL, String(level));
-  }
-
   global.RSStorage = {
-    getFTP, setFTP,
-    getLastLevel, setLastLevel, DEFAULT_FTP,
+    getFTP, setFTP, DEFAULT_FTP,
     getRideLogs, addRideLog, clearRideLogs,
   };
 })(window);

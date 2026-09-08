@@ -26,13 +26,26 @@
   }
 
   // Evenly-stepped sequence from startPct down (or up) to endPct over
-  // `count` reps, e.g. linearLadder(120, 110, 13) for the reference
-  // Rattlesnake's within-set power taper.
+  // `count` steps.
   function linearLadder(startPct, endPct, count) {
     if (count <= 1) return [startPct];
     const seq = [];
     for (let i = 0; i < count; i++) {
       seq.push(startPct + (endPct - startPct) * (i / (count - 1)));
+    }
+    return seq;
+  }
+
+  // Power steps down once per block of `blockSize` reps (not every
+  // single rep) -- e.g. buildBlockLadder(120, 110, 13, 4) holds reps
+  // 1-4 at 120%, 5-8 at ~116.7%, 9-12 at ~113.3%, and 13 at 110%,
+  // matching the reference Rattlesnake's within-set structure.
+  function buildBlockLadder(startPct, endPct, totalReps, blockSize) {
+    const numBlocks = Math.max(1, Math.ceil(totalReps / blockSize));
+    const blockValues = linearLadder(startPct, endPct, numBlocks);
+    const seq = [];
+    for (let i = 0; i < totalReps; i++) {
+      seq.push(blockValues[Math.floor(i / blockSize)]);
     }
     return seq;
   }
@@ -98,5 +111,5 @@
     };
   }
 
-  global.RSWorkout = { buildSegments, analyze, linearLadder, zoneForIntensity, ZONE_NAMES };
+  global.RSWorkout = { buildSegments, analyze, linearLadder, buildBlockLadder, zoneForIntensity, ZONE_NAMES };
 })(window);

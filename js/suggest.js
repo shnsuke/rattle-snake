@@ -1,14 +1,20 @@
-/* Turns an uploaded ride's segments into a coaching suggestion:
+/* Turns an uploaded ride's segments into a single next-intensity
+ * proposal. The session's shape (reps/sets/durations) is fixed --
+ * see progression.js -- so the only question is: what center %FTP
+ * should the within-set ladder be built around next time?
+ *
  * 1) classify each segment as kick/on/off/other by its duration+power
- *    shape (works for any of the 8 progression levels, since they all
- *    share the kick+ladder pattern, just with different numbers), then
- * 2) find the closest LEVELS entry by average on-power/reps/duration,
- * 3) compare each actual on-segment to what THAT LEVEL's ladder expects
- *    at that position -- not a plain first-half-vs-second-half power
- *    drop, since the ladder itself steps power down by design, so a
- *    raw drop would look like "fatigue" even on a perfectly-executed
- *    ride. Falling further behind the plan in the second half of the
- *    ride is the real fatigue signal.
+ *    shape (works at any intensity, since the shape never changes),
+ * 2) take the average on-segment power as the intensity actually
+ *    ridden ("center"),
+ * 3) compare each actual on-segment to what THIS ride's own ladder
+ *    shape would predict at that position -- not a plain first-half-
+ *    vs-second-half power drop, since the ladder itself steps power
+ *    down by design (and now in blocks of 4), so a raw drop would
+ *    look like "fatigue" even on a perfectly-executed ride. Falling
+ *    further behind that shape in the second half is the real
+ *    fatigue signal.
+ * 4) propose center+STEP / same / center-STEP for next time.
  */
 (function (global) {
   function classifySegments(segments) {
@@ -32,42 +38,25 @@
     return arr.reduce((s, x) => s + (key ? x[key] : x), 0) / arr.length;
   }
 
-  function matchLevel(segments) {
+  function matchIntensity(segments) {
     const { kicks, on, off } = classifySegments(segments);
     const sets = Math.max(1, kicks.length || 3);
     const reps = Math.max(1, Math.round(on.length / sets));
-    const avgOnPower = mean(on, 'power');
-    const avgOffPower = mean(off, 'power');
-    const avgOnDuration = mean(on, 'duration');
-
-    const LEVELS = global.RSProgression.LEVELS;
-    let bestIdx = 3, bestDist = Infinity;
-    LEVELS.forEach((l, idx) => {
-      const levelAvgOnPower = (l.ladderStart + l.ladderEnd) / 2;
-      const dist =
-        Math.abs((avgOnPower || levelAvgOnPower) - levelAvgOnPower) * 3 +
-        Math.abs((avgOffPower || l.offPower) - l.offPower) +
-        Math.abs((reps * sets) - (l.reps * l.sets)) * 1.5 +
-        Math.abs((avgOnDuration || l.onDuration) - l.onDuration) * 0.5;
-      if (dist < bestDist) { bestDist = dist; bestIdx = idx; }
-    });
-    return { levelIndex: bestIdx, sets, reps, avgOnPower, avgOffPower, on, off, kicks };
+    const center = mean(on, 'power');
+    return { center, sets, reps, on, off, kicks };
   }
 
-  // Builds the expected per-rep %FTP sequence for a level, shaped to
-  // match the actual ride's set/rep counts so it can be compared 1:1.
-  function expectedSequence(levelDef, sets, repsPerSet) {
-    const oneSet = global.RSWorkout.linearLadder(levelDef.ladderStart, levelDef.ladderEnd, repsPerSet);
-    let seq = [];
-    for (let s = 0; s < sets; s++) seq = seq.concat(oneSet);
-    return seq;
-  }
-
-  function assessFatigue(onSegments, levelDef, sets, repsPerSet) {
-    if (onSegments.length < 4) {
+  function assessFatigue(onSegments, center, sets, repsPerSet) {
+    if (onSegments.length < 4 || !center) {
       return { dropPct: 0, verdict: 'データ不足', detail: 'オン区間の本数が少なく、判定はできませんでした。' };
     }
-    const expected = expectedSequence(levelDef, sets, repsPerSet);
+    const BASE = global.RSProgression.BASE;
+    const ladderStart = center + BASE.ladderSpread / 2;
+    const ladderEnd = center - BASE.ladderSpread / 2;
+    const oneSet = global.RSWorkout.buildBlockLadder(ladderStart, ladderEnd, repsPerSet, BASE.blockSize);
+    let expected = [];
+    for (let s = 0; s < sets; s++) expected = expected.concat(oneSet);
+
     const n = Math.min(expected.length, onSegments.length);
     const adherence = [];
     for (let i = 0; i < n; i++) {
@@ -83,44 +72,42 @@
     let verdict, detail;
     if (dropPct > 7) {
       verdict = '顕著な後半失速';
-      detail = `計画比で前半平均${avgFirst.toFixed(0)}% → 後半平均${avgSecond.toFixed(0)}%まで落ち込んでおり、ラダーの想定以上にペースが落ちています。強度が高すぎた可能性があります。`;
+      detail = `前半平均${avgFirst.toFixed(0)}% → 後半平均${avgSecond.toFixed(0)}%(自分自身のペース比)まで落ち込んでおり、想定以上にペースが落ちています。強度が高すぎた可能性があります。`;
     } else if (dropPct > 3) {
       verdict = '軽度の後半失速';
-      detail = `計画比で前半平均${avgFirst.toFixed(0)}% → 後半平均${avgSecond.toFixed(0)}%と、やや計画を下回る程度の低下です。`;
+      detail = `前半平均${avgFirst.toFixed(0)}% → 後半平均${avgSecond.toFixed(0)}%(自分自身のペース比)と、やや低下しています。`;
     } else {
       verdict = '安定したペース';
-      detail = `計画比で前半平均${avgFirst.toFixed(0)}% → 後半平均${avgSecond.toFixed(0)}%とほぼ計画通りに走れており、余力を残せている可能性があります。`;
+      detail = `前半平均${avgFirst.toFixed(0)}% → 後半平均${avgSecond.toFixed(0)}%(自分自身のペース比)とほぼ一定で、余力を残せている可能性があります。`;
     }
     return { dropPct, verdict, detail, avgFirst, avgSecond };
   }
 
-  function suggestNextLevel(segments) {
-    const match = matchLevel(segments);
-    const LEVELS = global.RSProgression.LEVELS;
-    const levelDef = LEVELS[match.levelIndex];
-    const fatigue = assessFatigue(match.on, levelDef, match.sets, match.reps);
-    let recommendedIndex = match.levelIndex;
+  function suggestNextIntensity(segments) {
+    const match = matchIntensity(segments);
+    const fatigue = assessFatigue(match.on, match.center, match.sets, match.reps);
+    const STEP = global.RSProgression.INTENSITY_STEP;
+    let nextCenter = match.center;
     let rationale;
     if (fatigue.dropPct > 7) {
-      recommendedIndex = Math.max(0, match.levelIndex - 1);
-      rationale = '後半の失速が大きいため、次回は一段階易しいレベルで安定して追い込めるようにすることを提案します。';
+      nextCenter = match.center - STEP;
+      rationale = `後半の失速が大きいため、次回は${STEP}%ほど強度を下げて安定して追い込めるようにすることを提案します。`;
     } else if (fatigue.dropPct > 3) {
-      recommendedIndex = match.levelIndex;
-      rationale = '軽度の失速が見られるため、次回は同じレベルをもう一度行い、ペース配分の安定を優先することを提案します。';
+      nextCenter = match.center;
+      rationale = '軽度の失速が見られるため、次回は同じ強度をもう一度行い、ペース配分の安定を優先することを提案します。';
     } else {
-      recommendedIndex = Math.min(LEVELS.length - 1, match.levelIndex + 1);
-      rationale = '最後まで計画通りのペースを維持できているため、次回は一段階強度を上げることを提案します。';
+      nextCenter = match.center + STEP;
+      rationale = `最後まで安定したペースを維持できているため、次回は${STEP}%ほど強度を上げることを提案します。`;
     }
+    nextCenter = Math.round(nextCenter * 10) / 10;
     return {
-      matchedLevelIndex: match.levelIndex,
-      matchedLevel: levelDef,
+      currentCenter: Math.round(match.center * 10) / 10,
       fatigue,
-      recommendedIndex,
-      recommendedLevel: LEVELS[recommendedIndex],
+      nextCenter,
       rationale,
       match,
     };
   }
 
-  global.RSSuggest = { classifySegments, matchLevel, assessFatigue, suggestNextLevel };
+  global.RSSuggest = { classifySegments, matchIntensity, assessFatigue, suggestNextIntensity };
 })(window);

@@ -48,18 +48,16 @@
   <section id="tab-suggest" class="tabpanel">
     <h2>次回ワークアウトの提案</h2>
     <div id="suggestBasis" class="card"></div>
-    <div class="level-select" id="levelSelect"></div>
-    <div id="levelDetail" class="card"></div>
+    <div class="card" id="proposalCard">
+      <div id="proposalDetail"></div>
+    </div>
     <canvas id="levelChart" class="chart"></canvas>
     <div id="levelStats" class="stat-grid"></div>
     <div class="actions">
-      <button id="btnUseInPlayer" class="primary">このレベルを実行タブへ送る</button>
+      <button id="btnUseInPlayer" class="primary">この強度を実行タブへ送る</button>
       <button id="btnExportZwo">.zwo としてエクスポート (Zwift用)</button>
     </div>
-    <div class="card">
-      <h3>カスタム調整</h3>
-      <div class="custom-grid" id="customGrid"></div>
-    </div>
+    <p class="hint">本数・セット数・オン/オフの秒数は固定です（3セット×13本、30秒オン/15秒オフ、4本ごとに強度が段階的に低下）。変えられるのは強度（±ボタン）だけです。</p>
   </section>
 
   <section id="tab-overall" class="tabpanel">

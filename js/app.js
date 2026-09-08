@@ -1,22 +1,19 @@
 (function () {
   const { buildSegments, analyze, ZONE_NAMES } = window.RSWorkout;
-  const { LEVELS, levelToTemplate } = window.RSProgression;
+  const { DEFAULT_CENTER, INTENSITY_STEP, buildTemplateForIntensity } = window.RSProgression;
   const { drawChart, positionMarker, ZONE_COLORS } = window.RSChart;
-  const { suggestNextLevel } = window.RSSuggest;
+  const { suggestNextIntensity } = window.RSSuggest;
 
   let ftp = window.RSStorage.getFTP();
 
-  // Suggest tab state: which level is currently shown/selected there.
-  let currentLevelIndex = 3;
-  let currentLevelConfig = cloneLevel(LEVELS[currentLevelIndex]);
-  let currentTemplate = levelToTemplate(currentLevelConfig);
+  // Suggest tab state: the single intensity currently proposed/shown there.
+  let currentCenter = DEFAULT_CENTER;
+  let currentTemplate = buildTemplateForIntensity(currentCenter);
   let currentSegments = buildSegments(currentTemplate);
 
   let player = null;
   let playerSegments = null;
   let playerMeta = null;
-
-  function cloneLevel(l) { return JSON.parse(JSON.stringify(l)); }
 
   function fmtTime(totalSeconds) {
     totalSeconds = Math.max(0, Math.round(totalSeconds));
@@ -70,6 +67,10 @@
     return rides.length ? rides[rides.length - 1] : null;
   }
 
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
   // ---------- ① Home ----------
   function renderHome() {
     const ride = latestRide();
@@ -84,7 +85,6 @@
 
     const canvas = document.createElement('canvas');
     canvas.className = 'chart';
-    canvas.id = 'homeChart';
     const statsDiv = document.createElement('div');
     statsDiv.className = 'stat-grid';
     const zonesDiv = document.createElement('div');
@@ -97,17 +97,13 @@
     const a = renderStats(statsDiv, ride.segments);
     renderZoneBars(zonesDiv, a);
 
-    const suggestion = suggestNextLevel(ride.segments);
+    const suggestion = suggestNextIntensity(ride.segments);
     sugEl.innerHTML = `
-      <p><strong>今回のレベル判定:</strong> ${suggestion.matchedLevel.level}. ${escapeHtml(suggestion.matchedLevel.name)}</p>
-      <p><strong>ペース評価:</strong> ${suggestion.fatigue.verdict}(後半${suggestion.fatigue.dropPct >= 0 ? '-' : '+'}${Math.abs(suggestion.fatigue.dropPct).toFixed(1)}%) — ${suggestion.fatigue.detail}</p>
-      <p><strong>次回の提案:</strong> ${suggestion.recommendedLevel.level}. ${escapeHtml(suggestion.recommendedLevel.name)}</p>
+      <p><strong>今回の実測強度:</strong> 約${suggestion.currentCenter}% FTP</p>
+      <p><strong>ペース評価:</strong> ${suggestion.fatigue.verdict} — ${suggestion.fatigue.detail}</p>
+      <p><strong>次回の提案強度:</strong> 約${suggestion.nextCenter}% FTP</p>
       <p class="muted">${suggestion.rationale}</p>
     `;
-  }
-
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
   // ---------- ② Upload ----------
@@ -144,90 +140,54 @@
   // ---------- ③ Suggest ----------
   function initSuggestFromLatestRide() {
     const ride = latestRide();
-    if (!ride) return;
-    const suggestion = suggestNextLevel(ride.segments);
-    currentLevelIndex = suggestion.recommendedIndex;
-    currentLevelConfig = cloneLevel(LEVELS[currentLevelIndex]);
+    if (!ride) { currentCenter = DEFAULT_CENTER; return; }
+    currentCenter = suggestNextIntensity(ride.segments).nextCenter;
   }
 
   function renderSuggestBasis() {
     const ride = latestRide();
     const el = document.getElementById('suggestBasis');
     if (!ride) {
-      el.innerHTML = '<p class="muted">アップロード履歴がないため、基準レベル(Original Rattlesnake)を表示しています。</p>';
+      el.innerHTML = `<p class="muted">アップロード履歴がないため、基準強度(${DEFAULT_CENTER}%FTP)を表示しています。</p>`;
       return;
     }
-    const suggestion = suggestNextLevel(ride.segments);
+    const suggestion = suggestNextIntensity(ride.segments);
     el.innerHTML = `
       <h3>判定の根拠</h3>
-      <p class="muted">${escapeHtml(ride.label || '')} (${fmtDate(ride.date)}) を解析: レベル${suggestion.matchedLevel.level}相当・${suggestion.fatigue.verdict}</p>
+      <p class="muted">${escapeHtml(ride.label || '')} (${fmtDate(ride.date)}) を解析: 実測強度 約${suggestion.currentCenter}%FTP・${suggestion.fatigue.verdict}</p>
       <p>${suggestion.rationale}</p>
     `;
   }
 
-  function renderLevelChips() {
-    const wrap = document.getElementById('levelSelect');
-    wrap.innerHTML = LEVELS.map((l, i) =>
-      `<button class="level-chip ${i === currentLevelIndex ? 'active' : ''}" data-idx="${i}">${l.level}. ${l.name}</button>`
-    ).join('');
-    wrap.querySelectorAll('.level-chip').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        currentLevelIndex = parseInt(btn.dataset.idx, 10);
-        currentLevelConfig = cloneLevel(LEVELS[currentLevelIndex]);
-        window.RSStorage.setLastLevel(currentLevelIndex);
-        renderLevelChips();
-        renderLevelDetail();
-      });
-    });
-  }
-
-  const CUSTOM_FIELDS = [
-    ['sets', 'セット数'], ['reps', '本数/セット'],
-    ['onDuration', 'オン秒数'], ['offDuration', 'オフ秒数'],
-    ['ladderStart', 'ラダー開始 %FTP'], ['ladderEnd', 'ラダー終了 %FTP'],
-    ['offPower', 'オフ強度 %FTP'],
-    ['kickPower', 'キック強度 %FTP'], ['kickDuration', 'キック秒数'],
-    ['interSetRecovery', 'セット間回復 秒'],
-  ];
-
-  function renderCustomGrid() {
-    const grid = document.getElementById('customGrid');
-    grid.innerHTML = CUSTOM_FIELDS.map(([key, label]) =>
-      `<label>${label}<input type="number" data-key="${key}" value="${currentLevelConfig[key]}"></label>`
-    ).join('');
-    grid.querySelectorAll('input').forEach((input) => {
-      input.addEventListener('input', () => {
-        const v = parseFloat(input.value);
-        if (Number.isFinite(v)) {
-          currentLevelConfig[input.dataset.key] = v;
-          recomputeLevel();
-        }
-      });
-    });
-  }
-
-  function recomputeLevel() {
-    currentTemplate = levelToTemplate(currentLevelConfig);
+  function recomputeSuggestTemplate() {
+    currentTemplate = buildTemplateForIntensity(currentCenter);
     currentSegments = buildSegments(currentTemplate);
+    const ladderStart = Math.round((currentCenter + window.RSProgression.BASE.ladderSpread / 2) * 10) / 10;
+    const ladderEnd = Math.round((currentCenter - window.RSProgression.BASE.ladderSpread / 2) * 10) / 10;
+    const kickPower = Math.round(currentCenter + window.RSProgression.BASE.kickOffset);
+    document.getElementById('proposalDetail').innerHTML = `
+      <div class="proposal-center">
+        <button id="intensityDown" class="stepper">－</button>
+        <div class="proposal-value">${currentCenter}<span class="unit">%FTP</span></div>
+        <button id="intensityUp" class="stepper">＋</button>
+      </div>
+      <p class="muted">3セット × 13本 / オン30秒 ${ladderStart}%→${ladderEnd}%(4本ごとに段階的に低下) ・ オフ15秒@50% / キック60秒@${kickPower}% / セット間回復3分</p>
+    `;
+    document.getElementById('intensityDown').addEventListener('click', () => {
+      currentCenter = Math.round((currentCenter - INTENSITY_STEP) * 10) / 10;
+      recomputeSuggestTemplate();
+    });
+    document.getElementById('intensityUp').addEventListener('click', () => {
+      currentCenter = Math.round((currentCenter + INTENSITY_STEP) * 10) / 10;
+      recomputeSuggestTemplate();
+    });
     drawChart(document.getElementById('levelChart'), currentSegments);
     renderStats(document.getElementById('levelStats'), currentSegments);
   }
 
-  function renderLevelDetail() {
-    const l = currentLevelConfig;
-    document.getElementById('levelDetail').innerHTML = `
-      <h3>${l.level}. ${escapeHtml(l.name)} <span class="muted">(${escapeHtml(l.week)})</span></h3>
-      <p>${escapeHtml(l.note)}</p>
-      <p class="muted">${l.sets}セット × ${l.reps}本 / オン${l.onDuration}秒 ${l.ladderStart}%→${l.ladderEnd}%(ラダー) ・ オフ${l.offDuration}秒@${l.offPower}% / キック${l.kickDuration}秒@${l.kickPower}% / セット間回復${l.interSetRecovery}秒</p>
-    `;
-    renderCustomGrid();
-    recomputeLevel();
-  }
-
   function renderSuggestTab() {
     renderSuggestBasis();
-    renderLevelChips();
-    renderLevelDetail();
+    recomputeSuggestTemplate();
   }
 
   // ---------- ④ Overall ----------
@@ -247,22 +207,22 @@
     const padL = 34, padR = 10, padT = 12, padB = 20;
     const plotW = cssW - padL - padR;
     const plotH = cssH - padT - padB;
-    const maxTss = Math.max(20, ...points.map((p) => p.tss)) * 1.15;
+    const maxCenter = Math.max(60, ...points.map((p) => p.center)) * 1.1;
     const barW = Math.min(36, plotW / points.length - 6);
 
     points.forEach((p, i) => {
       const cx = padL + (plotW / points.length) * (i + 0.5);
-      const barH = (p.tss / maxTss) * plotH;
-      ctx.fillStyle = ZONE_COLORS[Math.min(6, Math.max(1, p.levelIndex >= 5 ? 6 : p.levelIndex >= 3 ? 5 : 2))];
+      const barH = (p.center / maxCenter) * plotH;
+      ctx.fillStyle = ZONE_COLORS[p.center >= 118 ? 6 : p.center >= 108 ? 5 : 2];
       ctx.fillRect(cx - barW / 2, padT + plotH - barH, barW, barH);
       ctx.fillStyle = 'rgba(120,120,120,0.9)';
       ctx.font = '9px system-ui, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`Lv${p.levelIndex}`, cx, cssH - 6);
+      ctx.fillText(`${Math.round(p.center)}%`, cx, cssH - 6);
     });
     ctx.textAlign = 'left';
     ctx.fillStyle = 'rgba(120,120,120,0.9)';
-    ctx.fillText('TSS', 2, padT + 8);
+    ctx.fillText('強度%', 2, padT + 8);
     ctx.strokeStyle = 'rgba(0,0,0,0.15)';
     ctx.strokeRect(padL, padT, plotW, plotH);
   }
@@ -284,8 +244,8 @@
 
     const points = rides.map((r) => {
       const a = analyze(r.segments, ftp);
-      const s = suggestNextLevel(r.segments);
-      return { ride: r, tss: a.tss, avgPower: a.avgPower, duration: a.totalDuration, levelIndex: s.matchedLevelIndex, fatigue: s.fatigue };
+      const s = suggestNextIntensity(r.segments);
+      return { ride: r, tss: a.tss, avgPower: a.avgPower, duration: a.totalDuration, center: s.currentCenter, fatigue: s.fatigue };
     });
 
     const totalDuration = points.reduce((s, p) => s + p.duration, 0);
@@ -294,24 +254,24 @@
       statCard('アップロード数', points.length),
       statCard('合計時間', fmtTime(totalDuration)),
       statCard('平均TSS', Math.round(avgTss)),
-      statCard('直近レベル', 'Lv' + points[points.length - 1].levelIndex),
+      statCard('直近強度', Math.round(points[points.length - 1].center) + '%'),
     ].join('');
 
     let trendText;
     if (points.length < 2) {
-      trendText = 'データが1件のみのため、傾向はまだ判定できません。アップロードを重ねると、レベルやTSSの推移が分かるようになります。';
+      trendText = 'データが1件のみのため、傾向はまだ判定できません。アップロードを重ねると、強度やTSSの推移が分かるようになります。';
     } else {
       const half = Math.floor(points.length / 2);
-      const firstAvgLevel = points.slice(0, half).reduce((s, p) => s + p.levelIndex, 0) / half;
-      const secondAvgLevel = points.slice(points.length - half).reduce((s, p) => s + p.levelIndex, 0) / half;
+      const firstAvgCenter = points.slice(0, half).reduce((s, p) => s + p.center, 0) / half;
+      const secondAvgCenter = points.slice(points.length - half).reduce((s, p) => s + p.center, 0) / half;
       const firstAvgTss = points.slice(0, half).reduce((s, p) => s + p.tss, 0) / half;
       const secondAvgTss = points.slice(points.length - half).reduce((s, p) => s + p.tss, 0) / half;
-      if (secondAvgLevel - firstAvgLevel > 0.4) {
-        trendText = `レベルが平均Lv${firstAvgLevel.toFixed(1)}→Lv${secondAvgLevel.toFixed(1)}へ上昇しており、順調に強度を上げられています(TSSも${Math.round(firstAvgTss)}→${Math.round(secondAvgTss)})。`;
-      } else if (firstAvgLevel - secondAvgLevel > 0.4) {
-        trendText = `レベルが平均Lv${firstAvgLevel.toFixed(1)}→Lv${secondAvgLevel.toFixed(1)}へ低下しています。疲労が蓄積している可能性があるため、回復を優先することを検討してください。`;
+      if (secondAvgCenter - firstAvgCenter > 1.5) {
+        trendText = `実測強度が平均${firstAvgCenter.toFixed(1)}%→${secondAvgCenter.toFixed(1)}%FTPへ上昇しており、順調に強度を上げられています(TSSも${Math.round(firstAvgTss)}→${Math.round(secondAvgTss)})。`;
+      } else if (firstAvgCenter - secondAvgCenter > 1.5) {
+        trendText = `実測強度が平均${firstAvgCenter.toFixed(1)}%→${secondAvgCenter.toFixed(1)}%FTPへ低下しています。疲労が蓄積している可能性があるため、回復を優先することを検討してください。`;
       } else {
-        trendText = `直近はLv${secondAvgLevel.toFixed(1)}前後で安定しています(TSS平均${Math.round(secondAvgTss)})。同じ強度を数回繰り返して定着させるか、後半失速が少なければ次のレベルへ進む提案が③タブに出ます。`;
+        trendText = `直近は${secondAvgCenter.toFixed(1)}%FTP前後で安定しています(TSS平均${Math.round(secondAvgTss)})。後半失速が少なければ、③タブで次の強度アップが提案されます。`;
       }
     }
     summaryEl.innerHTML = `<h3>傾向</h3><p>${trendText}</p>`;
@@ -321,7 +281,7 @@
     listEl.innerHTML = points.slice().reverse().map((p) => `
       <div class="history-item">
         <strong>${escapeHtml(p.ride.label || 'ワークアウト')}</strong> — ${fmtDate(p.ride.date)}<br>
-        ${fmtTime(p.duration)} / 平均${Math.round(p.avgPower)}W / TSS ${Math.round(p.tss)} / 判定レベル Lv${p.levelIndex} (${escapeHtml(LEVELS[p.levelIndex].name)}) / ${p.fatigue.verdict}
+        ${fmtTime(p.duration)} / 平均${Math.round(p.avgPower)}W / TSS ${Math.round(p.tss)} / 実測強度 約${Math.round(p.center)}%FTP / ${p.fatigue.verdict}
       </div>
     `).join('');
   }
@@ -398,7 +358,7 @@
         ftp = v;
         window.RSStorage.setFTP(ftp);
         renderHome();
-        recomputeLevel();
+        recomputeSuggestTemplate();
         renderOverall();
       }
     });
@@ -413,19 +373,19 @@
     });
 
     document.getElementById('btnUseInPlayer').addEventListener('click', () => {
-      loadIntoPlayer(currentSegments, `${currentLevelConfig.level}. ${currentLevelConfig.name}`);
+      loadIntoPlayer(currentSegments, `提案ワークアウト (約${currentCenter}%FTP)`);
       switchTab('player');
     });
 
     document.getElementById('btnExportZwo').addEventListener('click', () => {
       window.RSExport.downloadZWO(currentTemplate, {
-        name: `Rattlesnake Lv${currentLevelConfig.level} ${currentLevelConfig.name}`,
-        description: currentLevelConfig.note,
+        name: `Rattlesnake ${currentCenter}pct`,
+        description: `中心強度 約${currentCenter}%FTPのRattlesnakeワークアウト`,
       });
     });
 
     document.getElementById('btnStart').addEventListener('click', () => {
-      if (!player) loadIntoPlayer(currentSegments, `${currentLevelConfig.level}. ${currentLevelConfig.name}`);
+      if (!player) loadIntoPlayer(currentSegments, `提案ワークアウト (約${currentCenter}%FTP)`);
       player.start();
     });
     document.getElementById('btnPause').addEventListener('click', () => player && player.pause());
