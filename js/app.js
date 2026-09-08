@@ -112,11 +112,13 @@
 
   // ---------- ② Upload ----------
   function handleCsvUpload(file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const resultEl = document.getElementById('uploadResult');
-      try {
-        const segments = window.RSCsvImport.parseCSV(reader.result);
+    const resultEl = document.getElementById('uploadResult');
+    resultEl.innerHTML = '<p class="muted">解析中...</p>';
+    window.RSCsvImport.parseCSVFile(file)
+      .then((segments) => {
+        if (!segments.length) {
+          throw new Error('データ行を読み取れませんでした。列名(経過時間, 強度)がCSVと一致しているか確認してください。');
+        }
         window.RSStorage.addRideLog({ label: file.name, segments });
 
         const canvas = document.createElement('canvas');
@@ -133,11 +135,10 @@
         initSuggestFromLatestRide();
         renderSuggestTab();
         renderOverall();
-      } catch (err) {
+      })
+      .catch((err) => {
         resultEl.innerHTML = `<p class="muted">読み込みエラー: ${escapeHtml(err.message)}</p>`;
-      }
-    };
-    reader.readAsText(file, 'utf-8');
+      });
   }
 
   // ---------- ③ Suggest ----------

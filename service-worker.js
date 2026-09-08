@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rattlesnake-v2';
+const CACHE_NAME = 'rattlesnake-v3';
 const APP_SHELL = [
   './',
   './index.html',

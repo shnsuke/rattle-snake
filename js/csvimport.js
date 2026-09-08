@@ -7,7 +7,7 @@
 (function (global) {
   function parseCSV(text) {
     text = text.replace(/^﻿/, '');
-    const lines = text.split(/\r\n|\n/).filter((l) => l.length > 0);
+    const lines = text.split(/\r\n|\r|\n/).filter((l) => l.length > 0);
     if (lines.length < 2) throw new Error('CSVにデータ行がありません');
     const headers = lines[0].split(',').map((h) => h.trim());
     const idx = (name) => headers.indexOf(name);
@@ -41,6 +41,42 @@
     return segments;
   }
 
+  function looksLikeValidHeader(text) {
+    return text.indexOf('経過時間') !== -1 && text.indexOf('強度') !== -1;
+  }
+
+  function decodeArrayBuffer(buf, encoding) {
+    try {
+      return new TextDecoder(encoding, { fatal: false }).decode(buf);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Reads a File as text, auto-detecting UTF-8 vs Shift-JIS: many Japanese
+  // cycling-computer/PC tools export CSV in Shift-JIS, which garbles the
+  // Japanese column headers (経過時間, 強度) if decoded as UTF-8, causing
+  // parseCSV to fail to find them.
+  function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('ファイルの読み込みに失敗しました'));
+      reader.onload = () => {
+        const buf = reader.result;
+        const utf8 = decodeArrayBuffer(buf, 'utf-8');
+        if (utf8 && looksLikeValidHeader(utf8)) { resolve(utf8); return; }
+        const sjis = decodeArrayBuffer(buf, 'shift-jis');
+        if (sjis && looksLikeValidHeader(sjis)) { resolve(sjis); return; }
+        resolve(utf8 || sjis || '');
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  function parseCSVFile(file) {
+    return readFileAsText(file).then((text) => parseCSV(text));
+  }
+
   function estimateFTP(segments) {
     const est = segments
       .filter((s) => s.watts && s.power > 0)
@@ -50,5 +86,5 @@
     return est[Math.floor(est.length / 2)];
   }
 
-  global.RSCsvImport = { parseCSV, estimateFTP };
+  global.RSCsvImport = { parseCSV, parseCSVFile, estimateFTP };
 })(window);
