@@ -19,6 +19,22 @@
       xml += `<IntervalsT Repeat="${block.reps}" OnDuration="${block.on.duration}" OffDuration="${block.off.duration}" OnPower="${(block.on.power / 100).toFixed(3)}" OffPower="${(block.off.power / 100).toFixed(3)}"/>`;
       return xml;
     }
+    if (block.type === 'ladder') {
+      // ZWO's IntervalsT can't vary power per rep, so a ladder is
+      // written out as an explicit sequence of SteadyState blocks --
+      // the same way the reference Zwift workout itself is built.
+      let xml = '';
+      if (block.kick) {
+        xml += `<SteadyState Duration="${block.kick.duration}" Power="${(block.kick.power / 100).toFixed(3)}"/>`;
+      }
+      block.onPowers.forEach((power, i) => {
+        xml += `<SteadyState Duration="${block.onDuration}" Power="${(power / 100).toFixed(3)}"/>`;
+        if (i < block.onPowers.length - 1 || block.offAfterLast) {
+          xml += `<SteadyState Duration="${block.off.duration}" Power="${(block.off.power / 100).toFixed(3)}"/>`;
+        }
+      });
+      return xml;
+    }
     return '';
   }
 

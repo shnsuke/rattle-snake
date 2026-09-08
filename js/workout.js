@@ -1,10 +1,15 @@
 /* Rattlesnake workout model.
- * A "template" is a list of blocks. Each block is either:
- *   { type: 'steady', duration, power }                 -- power in %FTP
+ * A "template" is a list of blocks. Each block is one of:
+ *   { type: 'steady', duration, power }
  *   { type: 'intervals', kick: {duration,power}|null,
  *     reps, on: {duration,power}, off: {duration,power} }
- * buildSegments() flattens a template into a flat list of
- * { start, duration, power, label } segments in seconds / %FTP,
+ *   { type: 'ladder', kick: {duration,power}|null, setNumber,
+ *     onPowers: [pct, pct, ...], onDuration, off: {duration,power} }
+ *     -- like 'intervals' but each rep's on-power comes from onPowers[i]
+ *        instead of being constant, matching how the reference Zwift
+ *        "Rattlesnake" workout steps power down within each set.
+ * All power values are %FTP. buildSegments() flattens a template into
+ * a flat list of { start, duration, power, label, zone } segments,
  * which every other module (chart, player, export, analyzer) consumes.
  */
 (function (global) {
@@ -20,11 +25,23 @@
     return 7;
   }
 
+  // Evenly-stepped sequence from startPct down (or up) to endPct over
+  // `count` reps, e.g. linearLadder(120, 110, 13) for the reference
+  // Rattlesnake's within-set power taper.
+  function linearLadder(startPct, endPct, count) {
+    if (count <= 1) return [startPct];
+    const seq = [];
+    for (let i = 0; i < count; i++) {
+      seq.push(startPct + (endPct - startPct) * (i / (count - 1)));
+    }
+    return seq;
+  }
+
   function buildSegments(template) {
     const segs = [];
     let t = 0;
     function push(duration, power, label) {
-      segs.push({ start: t, duration, power, label, zone: zoneForIntensity(power) });
+      segs.push({ start: t, duration, power: Math.round(power * 10) / 10, label, zone: zoneForIntensity(power) });
       t += duration;
     }
     template.forEach((block, blockIdx) => {
@@ -36,6 +53,15 @@
           push(block.on.duration, block.on.power, `Set ${block.setNumber} On ${r}/${block.reps}`);
           if (r < block.reps || block.offAfterLast) {
             push(block.off.duration, block.off.power, `Set ${block.setNumber} Off ${r}/${block.reps}`);
+          }
+        }
+      } else if (block.type === 'ladder') {
+        if (block.kick) push(block.kick.duration, block.kick.power, `Set ${block.setNumber} Kick`);
+        const reps = block.onPowers.length;
+        for (let r = 1; r <= reps; r++) {
+          push(block.onDuration, block.onPowers[r - 1], `Set ${block.setNumber} On ${r}/${reps}`);
+          if (r < reps || block.offAfterLast) {
+            push(block.off.duration, block.off.power, `Set ${block.setNumber} Off ${r}/${reps}`);
           }
         }
       }
@@ -72,28 +98,5 @@
     };
   }
 
-  // The "original ride" template, cleaned up to a regular 3x12 30/15s
-  // structure (the source ride had one dropped rep in set 1 due to
-  // real-world fatigue; the template below is the intended design).
-  function baseTemplate() {
-    const set = (n) => ({
-      type: 'intervals',
-      setNumber: n,
-      kick: { duration: 60, power: 130 },
-      reps: 12,
-      on: { duration: 30, power: 107 },
-      off: { duration: 15, power: 50 },
-    });
-    return [
-      { type: 'steady', duration: 900, power: 55, label: 'Warm-up' },
-      set(1),
-      { type: 'steady', duration: 300, power: 60, label: 'Recovery' },
-      set(2),
-      { type: 'steady', duration: 300, power: 60, label: 'Recovery' },
-      set(3),
-      { type: 'steady', duration: 630, power: 45, label: 'Cool-down' },
-    ];
-  }
-
-  global.RSWorkout = { buildSegments, analyze, baseTemplate, zoneForIntensity, ZONE_NAMES };
+  global.RSWorkout = { buildSegments, analyze, linearLadder, zoneForIntensity, ZONE_NAMES };
 })(window);

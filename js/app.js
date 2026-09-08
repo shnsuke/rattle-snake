@@ -184,7 +184,8 @@
   const CUSTOM_FIELDS = [
     ['sets', 'セット数'], ['reps', '本数/セット'],
     ['onDuration', 'オン秒数'], ['offDuration', 'オフ秒数'],
-    ['onPower', 'オン強度 %FTP'], ['offPower', 'オフ強度 %FTP'],
+    ['ladderStart', 'ラダー開始 %FTP'], ['ladderEnd', 'ラダー終了 %FTP'],
+    ['offPower', 'オフ強度 %FTP'],
     ['kickPower', 'キック強度 %FTP'], ['kickDuration', 'キック秒数'],
     ['interSetRecovery', 'セット間回復 秒'],
   ];
@@ -217,7 +218,7 @@
     document.getElementById('levelDetail').innerHTML = `
       <h3>${l.level}. ${escapeHtml(l.name)} <span class="muted">(${escapeHtml(l.week)})</span></h3>
       <p>${escapeHtml(l.note)}</p>
-      <p class="muted">${l.sets}セット × ${l.reps}本 / オン${l.onDuration}秒@${l.onPower}% ・ オフ${l.offDuration}秒@${l.offPower}% / キック${l.kickDuration}秒@${l.kickPower}% / セット間回復${l.interSetRecovery}秒</p>
+      <p class="muted">${l.sets}セット × ${l.reps}本 / オン${l.onDuration}秒 ${l.ladderStart}%→${l.ladderEnd}%(ラダー) ・ オフ${l.offDuration}秒@${l.offPower}% / キック${l.kickDuration}秒@${l.kickPower}% / セット間回復${l.interSetRecovery}秒</p>
     `;
     renderCustomGrid();
     recomputeLevel();
