@@ -124,6 +124,30 @@
 
 </main>
 
+<script>
+  // Surfaces any script error visibly, since these devices are used
+  // without devtools attached -- a silent JS error otherwise looks
+  // identical to "nothing happened".
+  (function () {
+    function showBanner(msg) {
+      var el = document.getElementById('fatalErrorBanner');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'fatalErrorBanner';
+        el.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c0392b;color:#fff;padding:8px 12px;font-size:12px;z-index:9999;white-space:pre-wrap;';
+        document.body.appendChild(el);
+      }
+      el.textContent = 'エラーが発生しました: ' + msg;
+    }
+    window.addEventListener('error', function (e) {
+      showBanner((e.message || 'unknown error') + ' (' + (e.filename || '') + ':' + (e.lineno || '') + ')');
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      var reason = e.reason;
+      showBanner(reason && reason.message ? reason.message : String(reason));
+    });
+  })();
+</script>
 <script src="js/workout.js"></script>
 <script src="js/progression.js"></script>
 <script src="js/chart.js"></script>
