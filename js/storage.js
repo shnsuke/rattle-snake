@@ -4,8 +4,8 @@
  */
 (function (global) {
   const KEY_FTP = 'rs_ftp';
-  const KEY_HISTORY = 'rs_history';
   const KEY_LAST_LEVEL = 'rs_last_level';
+  const KEY_RIDES = 'rs_rides';
   const DEFAULT_FTP = 312;
 
   function getFTP() {
@@ -16,20 +16,25 @@
     localStorage.setItem(KEY_FTP, String(Math.round(watts)));
   }
 
-  function getHistory() {
+  // Ride logs: each uploaded/imported CSV workout, kept as %FTP segments
+  // (not watts) so re-analysis stays correct if the user's FTP changes later.
+  function getRideLogs() {
     try {
-      return JSON.parse(localStorage.getItem(KEY_HISTORY)) || [];
+      return JSON.parse(localStorage.getItem(KEY_RIDES)) || [];
     } catch (e) {
       return [];
     }
   }
-  function addHistoryEntry(entry) {
-    const h = getHistory();
-    h.unshift(Object.assign({ date: new Date().toISOString() }, entry));
-    localStorage.setItem(KEY_HISTORY, JSON.stringify(h.slice(0, 200)));
+  function addRideLog(entry) {
+    const rides = getRideLogs();
+    const id = entry.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    rides.push(Object.assign({ id, date: new Date().toISOString() }, entry, { id }));
+    rides.sort((a, b) => new Date(a.date) - new Date(b.date));
+    localStorage.setItem(KEY_RIDES, JSON.stringify(rides));
+    return id;
   }
-  function clearHistory() {
-    localStorage.removeItem(KEY_HISTORY);
+  function clearRideLogs() {
+    localStorage.removeItem(KEY_RIDES);
   }
 
   function getLastLevel() {
@@ -41,7 +46,8 @@
   }
 
   global.RSStorage = {
-    getFTP, setFTP, getHistory, addHistoryEntry, clearHistory,
+    getFTP, setFTP,
     getLastLevel, setLastLevel, DEFAULT_FTP,
+    getRideLogs, addRideLog, clearRideLogs,
   };
 })(window);

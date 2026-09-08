@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rattlesnake-v1';
+const CACHE_NAME = 'rattlesnake-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -9,10 +9,12 @@ const APP_SHELL = [
   './js/player.js',
   './js/storage.js',
   './js/csvimport.js',
+  './js/suggest.js',
   './js/export.js',
   './js/app.js',
   './manifest.webmanifest',
   './icons/icon.svg',
+  './data/rattlesnake_original_ride.csv',
 ];
 
 self.addEventListener('install', (event) => {

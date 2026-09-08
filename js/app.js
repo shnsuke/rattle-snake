@@ -1,10 +1,13 @@
 (function () {
-  const { buildSegments, analyze, baseTemplate, ZONE_NAMES } = window.RSWorkout;
+  const { buildSegments, analyze, ZONE_NAMES } = window.RSWorkout;
   const { LEVELS, levelToTemplate } = window.RSProgression;
   const { drawChart, positionMarker, ZONE_COLORS } = window.RSChart;
+  const { suggestNextLevel } = window.RSSuggest;
 
   let ftp = window.RSStorage.getFTP();
-  let currentLevelIndex = window.RSStorage.getLastLevel();
+
+  // Suggest tab state: which level is currently shown/selected there.
+  let currentLevelIndex = 3;
   let currentLevelConfig = cloneLevel(LEVELS[currentLevelIndex]);
   let currentTemplate = levelToTemplate(currentLevelConfig);
   let currentSegments = buildSegments(currentTemplate);
@@ -23,6 +26,9 @@
     const mm = h > 0 ? String(m).padStart(2, '0') : String(m);
     const ss = String(s).padStart(2, '0');
     return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+  }
+  function fmtDate(iso) {
+    return new Date(iso).toLocaleString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
   function statCard(label, value) {
@@ -59,24 +65,105 @@
     container.innerHTML = html;
   }
 
-  // ---------- Overview tab ----------
-  function renderOverview() {
-    const seg = buildSegments(baseTemplate());
-    const canvas = document.getElementById('overviewChart');
-    drawChart(canvas, seg);
-    const a = renderStats(document.getElementById('overviewStats'), seg);
-    renderZoneBars(document.getElementById('overviewZones'), a);
-    const notes = [
-      `推定FTP ${Math.round(ftp)}W を基準に算出。ウォームアップ15分 → (60秒キック130% + 30/15秒インターバル×12本)を3セット、セット間5分回復 → クールダウン10:30という構成。`,
-      `オン区間は105〜110%FTP(Z5)、オフ区間は50%FTP(Z1)で、各セット冒頭に130%FTPの"キック"を入れて素早くVO2maxへ到達させる、いわゆる 30/15プロトコル の典型的な設計です。`,
-      `VO2max帯(≥105%)滞在時間は約${fmtTime(a.vo2Time)}で、総時間${fmtTime(a.totalDuration)}に対して効率よくVO2max刺激を稼げています。`,
-      `TSS ${Math.round(a.tss)}前後、IF ${a.intensityFactor.toFixed(2)}は、高強度インターバル日として適切な負荷です。翌日は回復日にするのが推奨です。`,
-      `改善点: セット1本目の後半でオフ強度が乱れる(実測データでは1回だけ61秒の緩い回復が混入)傾向があり、ペーシングか疲労管理に注意。`,
-    ];
-    document.getElementById('overviewNotes').innerHTML = notes.map((n) => `<li>${n}</li>`).join('');
+  function latestRide() {
+    const rides = window.RSStorage.getRideLogs();
+    return rides.length ? rides[rides.length - 1] : null;
   }
 
-  // ---------- Levels tab ----------
+  // ---------- ① Home ----------
+  function renderHome() {
+    const ride = latestRide();
+    const latestEl = document.getElementById('homeLatest');
+    const sugEl = document.getElementById('homeSuggestion');
+
+    if (!ride) {
+      latestEl.innerHTML = '<p class="muted">まだワークアウトがアップロードされていません。「②アップロード」タブからCSVを追加してください。</p>';
+      sugEl.innerHTML = '<p class="muted">アップロード後にここへ提案が表示されます。</p>';
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.className = 'chart';
+    canvas.id = 'homeChart';
+    const statsDiv = document.createElement('div');
+    statsDiv.className = 'stat-grid';
+    const zonesDiv = document.createElement('div');
+    zonesDiv.className = 'zone-bars';
+    latestEl.innerHTML = `<p class="muted">${escapeHtml(ride.label || 'アップロードされたワークアウト')} — ${fmtDate(ride.date)}</p>`;
+    latestEl.appendChild(canvas);
+    latestEl.appendChild(statsDiv);
+    latestEl.appendChild(zonesDiv);
+    drawChart(canvas, ride.segments);
+    const a = renderStats(statsDiv, ride.segments);
+    renderZoneBars(zonesDiv, a);
+
+    const suggestion = suggestNextLevel(ride.segments);
+    sugEl.innerHTML = `
+      <p><strong>今回のレベル判定:</strong> ${suggestion.matchedLevel.level}. ${escapeHtml(suggestion.matchedLevel.name)}</p>
+      <p><strong>ペース評価:</strong> ${suggestion.fatigue.verdict}(後半${suggestion.fatigue.dropPct >= 0 ? '-' : '+'}${Math.abs(suggestion.fatigue.dropPct).toFixed(1)}%) — ${suggestion.fatigue.detail}</p>
+      <p><strong>次回の提案:</strong> ${suggestion.recommendedLevel.level}. ${escapeHtml(suggestion.recommendedLevel.name)}</p>
+      <p class="muted">${suggestion.rationale}</p>
+    `;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  // ---------- ② Upload ----------
+  function handleCsvUpload(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const resultEl = document.getElementById('uploadResult');
+      try {
+        const segments = window.RSCsvImport.parseCSV(reader.result);
+        window.RSStorage.addRideLog({ label: file.name, segments });
+
+        const canvas = document.createElement('canvas');
+        canvas.className = 'chart';
+        const statsDiv = document.createElement('div');
+        statsDiv.className = 'stat-grid';
+        resultEl.innerHTML = '<p class="muted">保存しました。「①ホーム」「③提案」「④総合評価」に反映されています。</p>';
+        resultEl.appendChild(canvas);
+        resultEl.appendChild(statsDiv);
+        drawChart(canvas, segments);
+        renderStats(statsDiv, segments);
+
+        renderHome();
+        initSuggestFromLatestRide();
+        renderSuggestTab();
+        renderOverall();
+      } catch (err) {
+        resultEl.innerHTML = `<p class="muted">読み込みエラー: ${escapeHtml(err.message)}</p>`;
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  // ---------- ③ Suggest ----------
+  function initSuggestFromLatestRide() {
+    const ride = latestRide();
+    if (!ride) return;
+    const suggestion = suggestNextLevel(ride.segments);
+    currentLevelIndex = suggestion.recommendedIndex;
+    currentLevelConfig = cloneLevel(LEVELS[currentLevelIndex]);
+  }
+
+  function renderSuggestBasis() {
+    const ride = latestRide();
+    const el = document.getElementById('suggestBasis');
+    if (!ride) {
+      el.innerHTML = '<p class="muted">アップロード履歴がないため、基準レベル(Original Rattlesnake)を表示しています。</p>';
+      return;
+    }
+    const suggestion = suggestNextLevel(ride.segments);
+    el.innerHTML = `
+      <h3>判定の根拠</h3>
+      <p class="muted">${escapeHtml(ride.label || '')} (${fmtDate(ride.date)}) を解析: レベル${suggestion.matchedLevel.level}相当・${suggestion.fatigue.verdict}</p>
+      <p>${suggestion.rationale}</p>
+    `;
+  }
+
   function renderLevelChips() {
     const wrap = document.getElementById('levelSelect');
     wrap.innerHTML = LEVELS.map((l, i) =>
@@ -127,15 +214,117 @@
   function renderLevelDetail() {
     const l = currentLevelConfig;
     document.getElementById('levelDetail').innerHTML = `
-      <h3>${l.level}. ${l.name} <span class="muted">(${l.week})</span></h3>
-      <p>${l.note}</p>
+      <h3>${l.level}. ${escapeHtml(l.name)} <span class="muted">(${escapeHtml(l.week)})</span></h3>
+      <p>${escapeHtml(l.note)}</p>
       <p class="muted">${l.sets}セット × ${l.reps}本 / オン${l.onDuration}秒@${l.onPower}% ・ オフ${l.offDuration}秒@${l.offPower}% / キック${l.kickDuration}秒@${l.kickPower}% / セット間回復${l.interSetRecovery}秒</p>
     `;
     renderCustomGrid();
     recomputeLevel();
   }
 
-  // ---------- Player tab ----------
+  function renderSuggestTab() {
+    renderSuggestBasis();
+    renderLevelChips();
+    renderLevelDetail();
+  }
+
+  // ---------- ④ Overall ----------
+  function drawTrendChart(canvas, points) {
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = canvas.clientWidth || canvas.parentElement.clientWidth || 600;
+    const cssH = 180;
+    canvas.width = cssW * dpr;
+    canvas.height = cssH * dpr;
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    if (!points.length) return;
+
+    const padL = 34, padR = 10, padT = 12, padB = 20;
+    const plotW = cssW - padL - padR;
+    const plotH = cssH - padT - padB;
+    const maxTss = Math.max(20, ...points.map((p) => p.tss)) * 1.15;
+    const barW = Math.min(36, plotW / points.length - 6);
+
+    points.forEach((p, i) => {
+      const cx = padL + (plotW / points.length) * (i + 0.5);
+      const barH = (p.tss / maxTss) * plotH;
+      ctx.fillStyle = ZONE_COLORS[Math.min(6, Math.max(1, p.levelIndex >= 5 ? 6 : p.levelIndex >= 3 ? 5 : 2))];
+      ctx.fillRect(cx - barW / 2, padT + plotH - barH, barW, barH);
+      ctx.fillStyle = 'rgba(120,120,120,0.9)';
+      ctx.font = '9px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`Lv${p.levelIndex}`, cx, cssH - 6);
+    });
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(120,120,120,0.9)';
+    ctx.fillText('TSS', 2, padT + 8);
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+    ctx.strokeRect(padL, padT, plotW, plotH);
+  }
+
+  function renderOverall() {
+    const rides = window.RSStorage.getRideLogs();
+    const summaryEl = document.getElementById('overallSummary');
+    const statsEl = document.getElementById('overallStats');
+    const listEl = document.getElementById('overallList');
+    const trendCanvas = document.getElementById('overallTrendChart');
+
+    if (!rides.length) {
+      summaryEl.innerHTML = '<p class="muted">まだアップロードされたワークアウトがありません。</p>';
+      statsEl.innerHTML = '';
+      listEl.innerHTML = '';
+      drawTrendChart(trendCanvas, []);
+      return;
+    }
+
+    const points = rides.map((r) => {
+      const a = analyze(r.segments, ftp);
+      const s = suggestNextLevel(r.segments);
+      return { ride: r, tss: a.tss, avgPower: a.avgPower, duration: a.totalDuration, levelIndex: s.matchedLevelIndex, fatigue: s.fatigue };
+    });
+
+    const totalDuration = points.reduce((s, p) => s + p.duration, 0);
+    const avgTss = points.reduce((s, p) => s + p.tss, 0) / points.length;
+    statsEl.innerHTML = [
+      statCard('アップロード数', points.length),
+      statCard('合計時間', fmtTime(totalDuration)),
+      statCard('平均TSS', Math.round(avgTss)),
+      statCard('直近レベル', 'Lv' + points[points.length - 1].levelIndex),
+    ].join('');
+
+    let trendText;
+    if (points.length < 2) {
+      trendText = 'データが1件のみのため、傾向はまだ判定できません。アップロードを重ねると、レベルやTSSの推移が分かるようになります。';
+    } else {
+      const half = Math.floor(points.length / 2);
+      const firstAvgLevel = points.slice(0, half).reduce((s, p) => s + p.levelIndex, 0) / half;
+      const secondAvgLevel = points.slice(points.length - half).reduce((s, p) => s + p.levelIndex, 0) / half;
+      const firstAvgTss = points.slice(0, half).reduce((s, p) => s + p.tss, 0) / half;
+      const secondAvgTss = points.slice(points.length - half).reduce((s, p) => s + p.tss, 0) / half;
+      if (secondAvgLevel - firstAvgLevel > 0.4) {
+        trendText = `レベルが平均Lv${firstAvgLevel.toFixed(1)}→Lv${secondAvgLevel.toFixed(1)}へ上昇しており、順調に強度を上げられています(TSSも${Math.round(firstAvgTss)}→${Math.round(secondAvgTss)})。`;
+      } else if (firstAvgLevel - secondAvgLevel > 0.4) {
+        trendText = `レベルが平均Lv${firstAvgLevel.toFixed(1)}→Lv${secondAvgLevel.toFixed(1)}へ低下しています。疲労が蓄積している可能性があるため、回復を優先することを検討してください。`;
+      } else {
+        trendText = `直近はLv${secondAvgLevel.toFixed(1)}前後で安定しています(TSS平均${Math.round(secondAvgTss)})。同じ強度を数回繰り返して定着させるか、後半失速が少なければ次のレベルへ進む提案が③タブに出ます。`;
+      }
+    }
+    summaryEl.innerHTML = `<h3>傾向</h3><p>${trendText}</p>`;
+
+    drawTrendChart(trendCanvas, points);
+
+    listEl.innerHTML = points.slice().reverse().map((p) => `
+      <div class="history-item">
+        <strong>${escapeHtml(p.ride.label || 'ワークアウト')}</strong> — ${fmtDate(p.ride.date)}<br>
+        ${fmtTime(p.duration)} / 平均${Math.round(p.avgPower)}W / TSS ${Math.round(p.tss)} / 判定レベル Lv${p.levelIndex} (${escapeHtml(LEVELS[p.levelIndex].name)}) / ${p.fatigue.verdict}
+      </div>
+    `).join('');
+  }
+
+  // ---------- Player ----------
   function loadIntoPlayer(segments, name) {
     playerSegments = segments;
     playerMeta = { name };
@@ -160,44 +349,7 @@
   }
 
   function onWorkoutFinish() {
-    const a = analyze(playerSegments, ftp);
-    window.RSStorage.addHistoryEntry({
-      name: playerMeta.name,
-      duration: a.totalDuration,
-      tss: Math.round(a.tss),
-      avgPower: Math.round(a.avgPower),
-    });
-    renderHistory();
-    alert('ワークアウト完了！お疲れ様でした。');
-  }
-
-  // ---------- Import/compare tab ----------
-  function renderImportResult(segments) {
-    const a = analyze(segments, ftp);
-    const planned = analyze(currentSegments, ftp);
-    const el = document.getElementById('importResult');
-    const canvas = document.createElement('canvas');
-    canvas.className = 'chart';
-    el.innerHTML = '';
-    el.appendChild(canvas);
-    drawChart(canvas, segments);
-    el.innerHTML += `
-      <div class="compare-row"><strong>実走</strong>: 時間 ${fmtTime(a.totalDuration)} / 平均${Math.round(a.avgPower)}W / NP${Math.round(a.normalizedPower)}W / TSS ${Math.round(a.tss)} / VO2max滞在 ${fmtTime(a.vo2Time)}</div>
-      <div class="compare-row"><strong>計画(${currentLevelConfig.name})</strong>: 時間 ${fmtTime(planned.totalDuration)} / 平均${Math.round(planned.avgPower)}W / NP${Math.round(planned.normalizedPower)}W / TSS ${Math.round(planned.tss)} / VO2max滞在 ${fmtTime(planned.vo2Time)}</div>
-    `;
-  }
-
-  // ---------- History tab ----------
-  function renderHistory() {
-    const list = window.RSStorage.getHistory();
-    const el = document.getElementById('historyList');
-    if (!list.length) { el.innerHTML = '<p class="muted">まだ記録がありません。</p>'; return; }
-    el.innerHTML = list.map((h) => `
-      <div class="history-item">
-        <strong>${h.name}</strong> — ${new Date(h.date).toLocaleString('ja-JP')}<br>
-        ${fmtTime(h.duration)} / 平均${h.avgPower}W / TSS ${h.tss}
-      </div>
-    `).join('');
+    alert('ワークアウト完了！お疲れ様でした。実際のライドデータをお持ちの場合は「②アップロード」からCSVを追加すると評価が更新されます。');
   }
 
   // ---------- Tabs ----------
@@ -211,14 +363,31 @@
       });
     });
   }
+  function switchTab(name) {
+    document.querySelector(`.tab[data-tab="${name}"]`).click();
+  }
 
-  // ---------- wiring ----------
+  // ---------- Seed & init ----------
+  function seedSampleRideIfEmpty() {
+    if (window.RSStorage.getRideLogs().length > 0) return Promise.resolve();
+    return fetch('data/rattlesnake_original_ride.csv')
+      .then((r) => r.text())
+      .then((text) => {
+        const segments = window.RSCsvImport.parseCSV(text);
+        window.RSStorage.addRideLog({ label: 'サンプル: 元のRattlesnakeライド', segments });
+      })
+      .catch(() => {});
+  }
+
   function init() {
     initTabs();
-    renderOverview();
-    renderLevelChips();
-    renderLevelDetail();
-    renderHistory();
+
+    seedSampleRideIfEmpty().then(() => {
+      renderHome();
+      initSuggestFromLatestRide();
+      renderSuggestTab();
+      renderOverall();
+    });
 
     document.getElementById('ftpInput').value = ftp;
     document.getElementById('ftpInput').addEventListener('change', (e) => {
@@ -226,14 +395,24 @@
       if (Number.isFinite(v) && v > 0) {
         ftp = v;
         window.RSStorage.setFTP(ftp);
-        renderOverview();
+        renderHome();
         recomputeLevel();
+        renderOverall();
       }
+    });
+
+    document.getElementById('csvFile').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) handleCsvUpload(file);
+    });
+
+    document.getElementById('homeGoSuggest').addEventListener('click', () => {
+      switchTab('suggest');
     });
 
     document.getElementById('btnUseInPlayer').addEventListener('click', () => {
       loadIntoPlayer(currentSegments, `${currentLevelConfig.level}. ${currentLevelConfig.name}`);
-      document.querySelector('.tab[data-tab="player"]').click();
+      switchTab('player');
     });
 
     document.getElementById('btnExportZwo').addEventListener('click', () => {
@@ -252,25 +431,12 @@
     document.getElementById('btnBack10').addEventListener('click', () => player && player.skip(-10));
     document.getElementById('btnFwd10').addEventListener('click', () => player && player.skip(10));
 
-    document.getElementById('csvFile').addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          const segments = window.RSCsvImport.parseCSV(reader.result);
-          renderImportResult(segments);
-        } catch (err) {
-          document.getElementById('importResult').innerHTML = `<p class="muted">読み込みエラー: ${err.message}</p>`;
-        }
-      };
-      reader.readAsText(file, 'utf-8');
-    });
-
-    document.getElementById('btnClearHistory').addEventListener('click', () => {
-      if (confirm('履歴を全て削除しますか？')) {
-        window.RSStorage.clearHistory();
-        renderHistory();
+    document.getElementById('btnClearRides').addEventListener('click', () => {
+      if (confirm('アップロード履歴を全て削除しますか？')) {
+        window.RSStorage.clearRideLogs();
+        renderHome();
+        renderSuggestTab();
+        renderOverall();
       }
     });
 
@@ -281,9 +447,11 @@
     }
 
     window.addEventListener('resize', () => {
-      drawChart(document.getElementById('overviewChart'), buildSegments(baseTemplate()));
+      const ride = latestRide();
+      if (ride) drawChart(document.querySelector('#homeLatest canvas'), ride.segments);
       drawChart(document.getElementById('levelChart'), currentSegments);
       if (playerSegments) drawChart(document.getElementById('playerChart'), playerSegments);
+      renderOverall();
     });
   }
 

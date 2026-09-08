@@ -15,32 +15,39 @@
 <header class="topbar">
   <h1>🐍 Rattlesnake <span class="sub">VO2max Trainer</span></h1>
   <nav class="tabs" id="tabs">
-    <button data-tab="overview" class="tab active">評価</button>
-    <button data-tab="levels" class="tab">レベル</button>
+    <button data-tab="home" class="tab active">①ホーム</button>
+    <button data-tab="upload" class="tab">②アップロード</button>
+    <button data-tab="suggest" class="tab">③提案</button>
+    <button data-tab="overall" class="tab">④総合評価</button>
     <button data-tab="player" class="tab">実行</button>
-    <button data-tab="import" class="tab">比較</button>
-    <button data-tab="history" class="tab">履歴</button>
     <button data-tab="settings" class="tab">設定</button>
   </nav>
 </header>
 
 <main>
 
-  <section id="tab-overview" class="tabpanel active">
-    <h2>元ワークアウトの評価</h2>
-    <p class="muted">アップロードされたライドデータ（<code>data/rattlesnake_original_ride.csv</code>）を解析した結果です。</p>
-    <div id="overviewStats" class="stat-grid"></div>
-    <canvas id="overviewChart" class="chart"></canvas>
-    <div id="overviewZones" class="zone-bars"></div>
-    <div class="card note">
-      <h3>設計の評価コメント</h3>
-      <ul id="overviewNotes"></ul>
+  <section id="tab-home" class="tabpanel active">
+    <h2>直近のワークアウト評価</h2>
+    <div id="homeLatest"></div>
+    <div class="card" id="homeSuggestionCard">
+      <h3>次回ワークアウトの提案</h3>
+      <div id="homeSuggestion"></div>
+      <div class="actions">
+        <button id="homeGoSuggest" class="primary">③提案タブで詳細を見る</button>
+      </div>
     </div>
   </section>
 
-  <section id="tab-levels" class="tabpanel">
-    <h2>強度バリエーション（漸進的オーバーロード）</h2>
-    <p class="muted">同じ「キック＋30/15秒インターバル」構造のまま、オン強度・オフ強度・本数・セット間回復を段階的に変化させます。</p>
+  <section id="tab-upload" class="tabpanel">
+    <h2>ワークアウトをアップロード</h2>
+    <p class="muted">サイクルコンピュータ等から書き出したCSV（Label,経過時間,平均パワー,平均ケイデンス,平均トルク,平均HR,最大HR,平均勾配,強度,ゾーン）をアップロードすると、自動で解析してこの端末に記録します。</p>
+    <input type="file" id="csvFile" accept=".csv,text/csv">
+    <div id="uploadResult"></div>
+  </section>
+
+  <section id="tab-suggest" class="tabpanel">
+    <h2>次回ワークアウトの提案</h2>
+    <div id="suggestBasis" class="card"></div>
     <div class="level-select" id="levelSelect"></div>
     <div id="levelDetail" class="card"></div>
     <canvas id="levelChart" class="chart"></canvas>
@@ -52,6 +59,19 @@
     <div class="card">
       <h3>カスタム調整</h3>
       <div class="custom-grid" id="customGrid"></div>
+    </div>
+  </section>
+
+  <section id="tab-overall" class="tabpanel">
+    <h2>総合評価</h2>
+    <p class="muted">これまでにアップロードした全ワークアウトを通しての傾向です。</p>
+    <div id="overallSummary" class="card"></div>
+    <div id="overallStats" class="stat-grid"></div>
+    <canvas id="overallTrendChart" class="chart"></canvas>
+    <div class="card">
+      <h3>アップロード履歴</h3>
+      <div id="overallList"></div>
+      <div class="actions"><button id="btnClearRides">アップロード履歴を消去</button></div>
     </div>
   </section>
 
@@ -89,19 +109,6 @@
     <p class="hint">画面をロックしても音声キューが鳴ります（対応端末ではスリープを自動抑制）。オフラインでも動作します。</p>
   </section>
 
-  <section id="tab-import" class="tabpanel">
-    <h2>実走データを比較</h2>
-    <p class="muted">同フォーマットのCSV（Label,経過時間,平均パワー,平均ケイデンス,平均トルク,平均HR,最大HR,平均勾配,強度,ゾーン）をアップロードすると、計画（レベル）との比較ができます。</p>
-    <input type="file" id="csvFile" accept=".csv,text/csv">
-    <div id="importResult"></div>
-  </section>
-
-  <section id="tab-history" class="tabpanel">
-    <h2>トレーニング履歴</h2>
-    <div class="actions"><button id="btnClearHistory">履歴を消去</button></div>
-    <div id="historyList"></div>
-  </section>
-
   <section id="tab-settings" class="tabpanel">
     <h2>設定</h2>
     <label class="field">
@@ -123,6 +130,7 @@
 <script src="js/player.js"></script>
 <script src="js/storage.js"></script>
 <script src="js/csvimport.js"></script>
+<script src="js/suggest.js"></script>
 <script src="js/export.js"></script>
 <script src="js/app.js"></script>
 </body>
