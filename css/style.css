@@ -180,6 +180,33 @@ button.primary {
 }
 button:active { transform: translateY(1px); }
 
+.interval-set { margin-bottom: 0.9rem; }
+.interval-set:last-child { margin-bottom: 0; }
+.interval-set h4 { margin: 0 0 0.4rem; font-size: 0.85rem; color: var(--text-dim); }
+.interval-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  overflow-x: auto;
+}
+.interval-chip {
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.68rem;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--text-dim);
+  background: var(--bg);
+}
+.interval-chip strong { color: var(--text); font-size: 0.78rem; }
+.interval-chip.kick { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg)); }
+.interval-chip.on { border-color: var(--accent-dim); }
+.interval-chip.off { opacity: 0.7; }
+.interval-chain .arrow { color: var(--text-dim); font-size: 0.75rem; flex: none; }
+
 .field {
   display: flex;
   flex-direction: column;

@@ -159,9 +159,36 @@
     `;
   }
 
+  function wattsFor(pct) {
+    return Math.round(ftp * pct / 100);
+  }
+
+  function intervalChip(timeLabel, watts, kind) {
+    return `<span class="interval-chip ${kind}">${timeLabel}<br><strong>${watts}W</strong></span>`;
+  }
+
+  function renderIntervalSequence(container, template) {
+    const setBlocks = template.filter((b) => b.type === 'ladder');
+    container.innerHTML = setBlocks.map((block) => {
+      const chips = [];
+      chips.push(intervalChip(`${block.kick.duration}秒`, wattsFor(block.kick.power), 'kick'));
+      block.onPowers.forEach((p, i) => {
+        chips.push(intervalChip(`${block.onDuration}秒`, wattsFor(p), 'on'));
+        if (i < block.onPowers.length - 1) {
+          chips.push(intervalChip(`${block.off.duration}秒`, wattsFor(block.off.power), 'off'));
+        }
+      });
+      return `<div class="interval-set">
+        <h4>セット${block.setNumber}</h4>
+        <div class="interval-chain">${chips.join('<span class="arrow">→</span>')}</div>
+      </div>`;
+    }).join('');
+  }
+
   function recomputeSuggestTemplate() {
     currentTemplate = buildTemplateForIntensity(currentCenter);
     currentSegments = buildSegments(currentTemplate);
+    renderIntervalSequence(document.getElementById('intervalSequence'), currentTemplate);
     const ladderStart = Math.round((currentCenter + window.RSProgression.BASE.ladderSpread / 2) * 10) / 10;
     const ladderEnd = Math.round((currentCenter - window.RSProgression.BASE.ladderSpread / 2) * 10) / 10;
     const kickPower = Math.round(currentCenter + window.RSProgression.BASE.kickOffset);
