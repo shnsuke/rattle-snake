@@ -1,0 +1,101 @@
+:root {
+  --bg: #1f2340;
+  --card: #2b3056;
+  --text: #f4f5fb;
+  --muted: #a9aecb;
+  --accent: #ffcc4d;
+  --accent-text: #2a2200;
+  --line: #3d4370;
+  --danger: #ff7b7b;
+  --ticket: #e84a5f;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  font-size: 16px;
+  -webkit-tap-highlight-color: transparent;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.app-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: calc(12px + env(safe-area-inset-top)) 16px 8px;
+}
+.app-header h1 { font-size: 20px; margin: 0; }
+.badge { font-size: 12px; background: var(--line); color: var(--muted); padding: 2px 8px; border-radius: 999px; }
+main { max-width: 640px; margin: 0 auto; padding: 0 16px 24px; }
+.card { background: var(--card); border-radius: 14px; padding: 14px; margin-bottom: 12px; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+h2 { font-size: 16px; margin: 0; }
+h2 small { color: var(--muted); font-weight: normal; }
+.hint { color: var(--muted); font-size: 13px; margin: 8px 0; }
+.center { text-align: center; }
+.row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
+.row-label { font-weight: 600; }
+.stepper { display: flex; align-items: center; gap: 6px; }
+.stepper button { width: 44px; height: 44px; border-radius: 50%; font-size: 22px; padding: 0; }
+.stepper input { width: 64px; text-align: center; font-size: 20px; }
+
+input, textarea {
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 10px; font: inherit; font-size: 16px; /* 16px以上でiOSの自動ズームを防ぐ */
+}
+textarea { width: 100%; margin-top: 8px; resize: vertical; }
+button {
+  background: var(--line); color: var(--text); border: 0; border-radius: 12px;
+  padding: 12px 14px; font: inherit; font-weight: 600; cursor: pointer;
+}
+button:active { transform: scale(0.97); }
+button.primary { background: var(--accent); color: var(--accent-text); }
+button.big { width: 100%; font-size: 18px; padding: 16px; }
+
+.toggle { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+.toggle input { width: 20px; height: 20px; }
+
+.option-list { list-style: none; margin: 0; padding: 0; }
+.option-list li { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+.swatch { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+.option-list input.opt-name { flex: 1; min-width: 0; }
+.option-list input.opt-count { width: 64px; text-align: center; }
+.option-list .opt-count-auto { width: 64px; text-align: center; color: var(--muted); font-size: 14px; }
+.count-status { font-size: 14px; margin: 8px 0 0; }
+.count-status.error { color: var(--danger); }
+
+.tickets {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px; margin: 12px 0 16px;
+}
+.ticket {
+  position: relative; aspect-ratio: 3 / 4; perspective: 600px;
+  background: none; padding: 0; border-radius: 12px;
+}
+.ticket .inner {
+  position: absolute; inset: 0; transition: transform 0.5s; transform-style: preserve-3d;
+}
+.ticket.open .inner { transform: rotateY(180deg); }
+.ticket .face {
+  position: absolute; inset: 0; border-radius: 12px; backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 6px; text-align: center; overflow: hidden; word-break: break-all;
+}
+.ticket .front {
+  background: repeating-linear-gradient(45deg, var(--ticket), var(--ticket) 10px, #d63d52 10px, #d63d52 20px);
+  color: #fff;
+}
+.ticket .front .who { font-size: 15px; font-weight: 700; background: rgba(0,0,0,0.25); padding: 4px 8px; border-radius: 8px; }
+.ticket .front .q { font-size: 28px; margin-top: 6px; }
+.ticket .back { transform: rotateY(180deg); color: #1a1a1a; }
+.ticket .back .who { font-size: 12px; opacity: 0.8; }
+.ticket .back .result { font-size: 18px; font-weight: 800; margin-top: 4px; }
+
+.actions { display: flex; gap: 10px; margin-bottom: 10px; }
+.actions button { flex: 1; }
+
+.group { background: var(--card); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; border-left: 8px solid; }
+.group h3 { margin: 0 0 6px; font-size: 16px; }
+.group h3 span { color: var(--muted); font-weight: normal; font-size: 13px; }
+.group ul { margin: 0; padding-left: 18px; }

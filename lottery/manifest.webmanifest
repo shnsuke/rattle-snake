@@ -1,0 +1,14 @@
+{
+  "name": "くじ引き",
+  "short_name": "くじ引き",
+  "description": "オフラインで使える、人数と選択肢をその都度決められるくじ引きアプリ",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1f2340",
+  "theme_color": "#1f2340",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

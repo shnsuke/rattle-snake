@@ -1,20 +1,11 @@
-const CACHE_NAME = 'rattlesnake-v7';
+const CACHE_NAME = 'lottery-v1';
 const APP_SHELL = [
   './',
   './index.html',
-  './css/style.css',
-  './js/workout.js',
-  './js/progression.js',
-  './js/chart.js',
-  './js/player.js',
-  './js/storage.js',
-  './js/csvimport.js',
-  './js/suggest.js',
-  './js/export.js',
-  './js/app.js',
+  './style.css',
+  './app.js',
   './manifest.webmanifest',
-  './icons/icon.svg',
-  './data/rattlesnake_original_ride.csv',
+  './icon.svg',
 ];
 
 self.addEventListener('install', (event) => {
@@ -26,15 +17,16 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k.startsWith('rattlesnake-') && k !== CACHE_NAME).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => k.startsWith('lottery-') && k !== CACHE_NAME).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
 
+// キャッシュ優先で即表示し、裏でネットワークから更新する
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   event.respondWith(
-    caches.match(event.request).then((cached) => {
+    caches.match(event.request, { ignoreSearch: true }).then((cached) => {
       const network = fetch(event.request)
         .then((response) => {
           if (response && response.ok) {
